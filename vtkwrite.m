@@ -118,7 +118,7 @@ switch upper(dataType)
             fwrite(fid, m(:)', 'float', 'b');
         end
         
-    case {'STRUCTURED_GRID','UNSTRUCTURED_GRID'}
+    case 'STRUCTURED_GRID'
         % 3. The format data proper is saved in (ASCII or Binary). Use
         % fprintf to write data in the case of ASCII and fwrite for binary.
         if numel(varargin)<6, error('Not enough input arguments'); end
@@ -156,6 +156,111 @@ switch upper(dataType)
         % specifying the number of points of cells. Other keyword/data combination
         % then define the actual dataset attribute values.
         fprintf(fid, ['\nPOINT_DATA ' num2str(n_elements)]);
+        % Parse remaining argument.
+        vidx = find(strcmpi(varargin,'VECTORS'));
+        sidx = find(strcmpi(varargin,'SCALARS'));
+        if vidx~=0
+            for ii = 1:length(vidx)
+                title = varargin{vidx(ii)+1};
+                % Data enteries begin with a keyword specifying data type
+                % and numeric format.
+                fprintf(fid, ['\nVECTORS ', title,' float\n']);
+                output = [varargin{ vidx(ii) + 2 }(:)';...
+                          varargin{ vidx(ii) + 3 }(:)';...
+                          varargin{ vidx(ii) + 4 }(:)'];
+
+                if ~binaryflag
+                    spec = ['%0.', precision, 'f '];
+                    fprintf(fid, spec, output);
+                else
+                    fwrite(fid, output, 'float', 'b');
+                end
+%                 fwrite(fid, [reshape(varargin{vidx(ii)+2},1,n_elements);...
+%                 reshape(varargin{vidx(ii)+3},1,n_elements);...
+%                 reshape(varargin{vidx(ii)+4},1,n_elements)],'float','b');
+            end
+        end
+        if sidx~=0
+            for ii = 1:length(sidx)
+                title = varargin{sidx(ii)+1};
+                fprintf(fid, ['\nSCALARS ', title,' float\n']);
+                fprintf(fid, 'LOOKUP_TABLE default\n');
+                if ~binaryflag
+                    spec = ['%0.', precision, 'f '];
+                    fprintf(fid, spec, varargin{ sidx(ii) + 2});
+                else
+                    fwrite(fid, varargin{ sidx(ii) + 2}, 'float', 'b');
+                end
+%                 fwrite(fid, reshape(varargin{sidx(ii)+2},1,n_elements),'float','b');
+            end
+        end
+
+    case 'UNSTRUCTURED_GRID'
+        % 3. The format data proper is saved in (ASCII or Binary). Use
+        % fprintf to write data in the case of ASCII and fwrite for binary.
+        if numel(varargin)<4, error('Not enough input arguments'); end
+            setdataformat(fid, binaryflag);
+    %         fprintf(fid, 'BINARY\n');
+            x = varargin{1};
+            y = varargin{2};
+            z = varargin{3};
+            if sum(size(x)==size(y) & size(y)==size(z))~=length(size(x))
+                error('Input dimesions do not match')
+            end
+            connect = varargin{4};
+            connect = connect - 1;
+            n_points = numel(x);
+            n_cells = size(connect, 1);
+            n_vertex = size(connect, 2);
+            type_cell = 0;
+            if(n_vertex == 8)
+                type_cell = 12;
+            elseif(n_vertex == 4)
+                type_cell = 10;
+            end
+            % 4. Type of Dataset ( can be STRUCTURED_POINTS, STRUCTURED_GRID,
+            % UNSTRUCTURED_GRID, POLYDATA, RECTILINEAR_GRID or FIELD )
+            % This part, dataset structure, begins with a line containing the
+            % keyword 'DATASET' followed by a keyword describing the type of dataset.
+            % Then the geomettry part describes geometry and topology of the dataset.
+            fprintf(fid, 'DATASET UNSTRUCTURED_GRID\n');
+
+            fprintf(fid, ['POINTS ' num2str(n_points) ' float\n']);
+            output = [x(:)'; y(:)'; z(:)'];
+            
+            if ~binaryflag
+                spec = ['%0.', precision, 'f '];
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'float', 'b');
+            end
+
+            fprintf(fid,'\nCELLS %d %d\n', n_cells, numel(connect) + n_cells);
+            output = [n_vertex .* ones(1, n_cells); connect'];
+
+            if ~binaryflag
+                spec = '%d ';
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'int', 'b');
+            end
+
+            fprintf(fid,'\nCELL_TYPES %d\n', n_cells);
+            output = [type_cell .* ones(1, n_cells)];
+            
+            if ~binaryflag
+                spec = '%d ';
+                fprintf(fid, spec, output);
+            else
+                fwrite(fid, output, 'int', 'b');
+            end
+
+        % 5.This final part describe the dataset attributes and begins with the
+        % keywords 'POINT_DATA' or 'CELL_DATA', followed by an integer number
+        % specifying the number of points of cells. Other keyword/data combination
+        % then define the actual dataset attribute values.
+        % fprintf(fid, ['\nPOINT_DATA ' num2str(n_points)]);
+        fprintf(fid, ['\nCELL_DATA ' num2str(n_cells)]);
         % Parse remaining argument.
         vidx = find(strcmpi(varargin,'VECTORS'));
         sidx = find(strcmpi(varargin,'SCALARS'));
